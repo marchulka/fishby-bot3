@@ -1,4 +1,3 @@
-# Импортируем нужные библиотеки
 from fastapi import FastAPI, Request, HTTPException
 from supabase import create_client, Client
 import os
@@ -8,44 +7,42 @@ import logging
 # Настраиваем логирование
 logging.basicConfig(level=logging.INFO)
 
-# Создаём экземпляр FastAPI-приложения
 app = FastAPI()
 
-# Подключение к Supabase
+# Переменные окружения
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 JWT_SECRET = os.getenv("JWT_SECRET")
 
+# Клиент Supabase
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# Эндпоинт для проверки жизни сервера
 @app.get("/next-task")
 async def next_task():
     return {"status": "ok", "message": "Server is live!"}
 
-# Функция записи попытки в БД
+# Правильная запись попытки
 def log_attempt(user_id: str, question: str, selected: str, correct: bool):
     data = {
-        "user_id": user_id,
-        "question": question,
-        "selected": selected,
-        "correct": correct
+        "user_id": str(user_id),
+        "question": str(question),
+        "selected": str(selected),
+        "correct": bool(correct)
     }
     res = supabase.table("attempts").insert(data).execute()
     return res
 
-# Эндпоинт для приёма ответов от пользователя
 @app.post("/submit")
 async def submit_answer(request: Request):
     try:
-        # Читаем токен из заголовков
+        # Чтение заголовка
         auth_header = request.headers.get("Authorization")
         if not auth_header or not auth_header.startswith("Bearer "):
             raise HTTPException(status_code=401, detail="Authorization header missing or invalid")
 
         token = auth_header.split(" ")[1]
 
-        # Проверяем токен
+        # Проверка токена
         try:
             payload = jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
             user_id = payload.get("sub") or payload.get("user_id") or "anon"
@@ -55,7 +52,7 @@ async def submit_answer(request: Request):
             logging.error(f"Invalid Token: {e}")
             raise HTTPException(status_code=401, detail="Invalid token")
 
-        # Читаем тело запроса
+        # Чтение тела запроса
         body = await request.json()
         question = body.get("question")
         selected = body.get("selected")
@@ -71,7 +68,6 @@ async def submit_answer(request: Request):
         logging.error(f"Unexpected error: {e}")
         raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")
 
-# Стандартный запуск через uvicorn
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("main:app", host="0.0.0.0", port=8000)
