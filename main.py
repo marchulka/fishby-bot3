@@ -1,13 +1,14 @@
-from fastapi import FastAPI, Request, Header, HTTPException
+from fastapi import FastAPI, Request, HTTPException
+from fastapi.responses import JSONResponse
 from supabase import create_client, Client
-from jose import jwt, JWTError
 import os
+import jwt
 
 app = FastAPI()
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
-SUPABASE_JWT_SECRET = os.getenv("SUPABASE_JWT_SECRET")
+JWT_SECRET = os.getenv("JWT_SECRET")
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
@@ -15,16 +16,6 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 async def next_task():
     return {"status": "ok", "message": "Server is live!"}
 
-# Проверка валидности токена
-def verify_jwt_token(token: str):
-    try:
-        payload = jwt.decode(token, SUPABASE_JWT_SECRET, algorithms=["HS256"])
-        return payload
-    except JWTError as e:
-        print(f"JWT verification failed: {e}")
-        return None
-
-# Запись попытки в Supabase
 def log_attempt(user_id: str, question: str, selected: str, correct: bool):
     data = {
         "user_id": user_id,
@@ -35,25 +26,31 @@ def log_attempt(user_id: str, question: str, selected: str, correct: bool):
     res = supabase.table("attempts").insert(data).execute()
     return res
 
-# Эндпоинт приёма ответов
 @app.post("/submit")
-async def submit_answer(request: Request, authorization: str = Header(None)):
-    if not authorization:
-        raise HTTPException(status_code=401, detail="Authorization header missing")
-
-    token = authorization.split(" ")[1]  # Отделяем "Bearer"
-    payload = verify_jwt_token(token)
-
-    if payload is None:
-        raise HTTPException(status_code=401, detail="Invalid or expired token")
+async def submit_answer(request: Request):
+    auth = request.headers.get("Authorization")
+    if not auth or not auth.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing or invalid Authorization header")
+    
+    token = auth.split(" ")[1]
+    try:
+        payload = jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token expired")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Invalid token")
 
     body = await request.json()
-    result = log_attempt(
-        user_id=payload.get("sub", "anon"),
-        question=body.get("question", "unknown"),
-        selected=body.get("selected", "none"),
-        correct=body.get("correct", False)
-    )
+    
+    user_id = body.get("user_id") or payload.get("sub") or "anon"
+    question = body.get("question")
+    selected = body.get("selected")
+    correct = body.get("correct", False)
+
+    if not question or not selected:
+        return JSONResponse(status_code=400, content={"status": "error", "message": "Missing question or selected"})
+
+    result = log_attempt(user_id, question, selected, correct)
     return {"status": "saved", "response": result.data}
 
 if __name__ == "__main__":
