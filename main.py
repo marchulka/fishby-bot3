@@ -1,56 +1,60 @@
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Header, HTTPException
 from supabase import create_client, Client
-from fastapi.responses import JSONResponse
+from jose import jwt, JWTError
 import os
 
 app = FastAPI()
+
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+SUPABASE_JWT_SECRET = os.getenv("SUPABASE_JWT_SECRET")
+
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 @app.get("/next-task")
 async def next_task():
     return {"status": "ok", "message": "Server is live!"}
 
-@app.post("/submit")
-async def submit_answer(request: Request):
+# Проверка валидности токена
+def verify_jwt_token(token: str):
     try:
-        # 🔁 Инициализируем клиент только внутри запроса (если переменные заданы)
-        SUPABASE_URL = os.getenv("SUPABASE_URL")
-        SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+        payload = jwt.decode(token, SUPABASE_JWT_SECRET, algorithms=["HS256"])
+        return payload
+    except JWTError as e:
+        print(f"JWT verification failed: {e}")
+        return None
 
-        if not SUPABASE_URL or not SUPABASE_KEY:
-            return JSONResponse(status_code=500, content={
-                "status": "error",
-                "message": "Supabase credentials not found in environment variables."
-            })
+# Запись попытки в Supabase
+def log_attempt(user_id: str, question: str, selected: str, correct: bool):
+    data = {
+        "user_id": user_id,
+        "question": question,
+        "selected": selected,
+        "correct": correct
+    }
+    res = supabase.table("attempts").insert(data).execute()
+    return res
 
-        supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+# Эндпоинт приёма ответов
+@app.post("/submit")
+async def submit_answer(request: Request, authorization: str = Header(None)):
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Authorization header missing")
 
-        body = await request.json()
-        user_id = body.get("user_id", "anon")
-        question = body.get("question", "unknown")
-        selected = body.get("selected", "none")
-        correct = body.get("correct", False)
+    token = authorization.split(" ")[1]  # Отделяем "Bearer"
+    payload = verify_jwt_token(token)
 
-        response = supabase.table("attempts").insert({
-            "user_id": user_id,
-            "question": question,
-            "selected": selected,
-            "correct": correct
-        }).execute()
+    if payload is None:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
 
-        if hasattr(response, "data") and response.data:
-            return {"status": "saved", "response": response.data}
-        else:
-            return JSONResponse(status_code=500, content={
-                "status": "error",
-                "message": "Insert failed or empty response",
-                "details": str(response)
-            })
-
-    except Exception as e:
-        return JSONResponse(status_code=500, content={
-            "status": "error",
-            "message": str(e)
-        })
+    body = await request.json()
+    result = log_attempt(
+        user_id=payload.get("sub", "anon"),
+        question=body.get("question", "unknown"),
+        selected=body.get("selected", "none"),
+        correct=body.get("correct", False)
+    )
+    return {"status": "saved", "response": result.data}
 
 if __name__ == "__main__":
     import uvicorn
