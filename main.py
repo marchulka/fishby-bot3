@@ -21,12 +21,12 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 async def next_task():
     return {"status": "ok", "message": "Server is live!"}
 
-# Правильная запись попытки
+# Новая безопасная функция записи
 def log_attempt(user_id: str, question: str, selected: str, correct: bool):
     data = {
-        "user_id": str(user_id),
-        "question": str(question),
-        "selected": str(selected),
+        "user_id": str(user_id or ""),
+        "question": str(question or ""),
+        "selected": str(selected or ""),
         "correct": bool(correct)
     }
     res = supabase.table("attempts").insert(data).execute()
@@ -35,7 +35,7 @@ def log_attempt(user_id: str, question: str, selected: str, correct: bool):
 @app.post("/submit")
 async def submit_answer(request: Request):
     try:
-        # Чтение заголовка
+        # Читаем токен
         auth_header = request.headers.get("Authorization")
         if not auth_header or not auth_header.startswith("Bearer "):
             raise HTTPException(status_code=401, detail="Authorization header missing or invalid")
@@ -52,13 +52,13 @@ async def submit_answer(request: Request):
             logging.error(f"Invalid Token: {e}")
             raise HTTPException(status_code=401, detail="Invalid token")
 
-        # Чтение тела запроса
+        # Читаем тело запроса
         body = await request.json()
         question = body.get("question")
         selected = body.get("selected")
         correct = body.get("correct", False)
 
-        if not question or not selected:
+        if question is None or selected is None:
             raise HTTPException(status_code=400, detail="Missing 'question' or 'selected' field")
 
         result = log_attempt(user_id=user_id, question=question, selected=selected, correct=correct)
