@@ -3,6 +3,7 @@ from fastapi import FastAPI, Request
 from supabase import create_client, Client
 import os
 import logging
+from jose import jwt
 
 # Создаём экземпляр FastAPI-приложения
 app = FastAPI()
@@ -51,7 +52,6 @@ async def submit_answer(request: Request):
         token = request.headers.get('Authorization')
         if token:
             try:
-                from jose import jwt
                 token = token.replace('Bearer ', '')
                 decoded = jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
                 bot_id = decoded.get("bot_id", "default_bot")
@@ -72,7 +72,7 @@ async def submit_answer(request: Request):
         logging.error(f"Unexpected error: {str(e)}")
         return {"status": "error", "message": str(e)}
 
-# 🔥 Новый эндпоинт для показа ПОЛНОГО JWT_SECRET
+# Эндпоинт для показа полного JWT_SECRET
 @app.get("/env-check")
 async def env_check():
     return {
@@ -87,14 +87,23 @@ async def token_check(request: Request):
         return {"status": "error", "message": "Authorization header missing"}
     
     try:
-        from jose import jwt
         token = token.replace('Bearer ', '')
         decoded = jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
         return {"status": "decoded", "payload": decoded}
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
-# Стандартный запуск uvicorn для Railway и локалки
+# 🔥 Новый эндпоинт для генерации валидного токена прямо на сервере
+@app.get("/generate-token")
+async def generate_token():
+    try:
+        payload = {"bot_id": "fishby_main_bot"}
+        token = jwt.encode(payload, JWT_SECRET, algorithm="HS256")
+        return {"status": "token_generated", "token": token}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+# Стандартный запуск uvicorn
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("main:app", host="0.0.0.0", port=8000)
