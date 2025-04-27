@@ -10,7 +10,7 @@ app = FastAPI()
 # Подключение к Supabase с использованием переменных окружения
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
-JWT_SECRET = os.getenv("JWT_SECRET")  # пока не используем, но пусть будет для будущего
+JWT_SECRET = os.getenv("JWT_SECRET")
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # Конфигурация логирования
@@ -33,14 +33,23 @@ def log_attempt(user_id: str, question: str, selected: str, correct: bool, bot_i
     res = supabase.table("attempts").insert(data).execute()
     return res
 
-# Эндпоинт для приёма ответа от пользователя и логирования
+# Эндпоинт для приёма ответа от пользователя и логирования попытки
 @app.post("/submit")
 async def submit_answer(request: Request):
     try:
         body = await request.json()
 
-        # 🔥 Временный режим: всегда ставим bot_id = "default_bot"
-        bot_id = "default_bot"
+        # Мягкая обработка Authorization
+        bot_id = "default_bot"  # по умолчанию
+        token = request.headers.get('Authorization')
+        if token:
+            try:
+                from jose import jwt
+                token = token.replace('Bearer ', '')
+                decoded = jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
+                bot_id = decoded.get("bot_id", "default_bot")
+            except Exception as token_error:
+                logging.warning(f"Token decode failed: {str(token_error)}")
 
         # Логируем попытку
         result = log_attempt(
@@ -57,7 +66,7 @@ async def submit_answer(request: Request):
         logging.error(f"Unexpected error: {str(e)}")
         return {"status": "error", "message": str(e)}
 
-# Стандартный запуск uvicorn для Railway и локалки
+# Стандартный запуск uvicorn для Railway и локальной работы
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("main:app", host="0.0.0.0", port=8000)
