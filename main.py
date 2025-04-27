@@ -49,7 +49,7 @@ async def submit_answer(request: Request):
                 decoded = jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
                 bot_id = decoded.get("bot_id", "default_bot")
             except Exception as token_error:
-                logging.warning(f"Token decode failed: {str(token_error)}")
+                logging.error(f"!!! TOKEN DECODE ERROR: {str(token_error)}")  # Расширенный лог ошибки
 
         # Логируем попытку
         result = log_attempt(
@@ -66,7 +66,7 @@ async def submit_answer(request: Request):
         logging.error(f"Unexpected error: {str(e)}")
         return {"status": "error", "message": str(e)}
 
-# Стандартный запуск uvicorn для Railway и локальной работы
+# Стандартный запуск uvicorn для Railway и локалки
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("main:app", host="0.0.0.0", port=8000)
