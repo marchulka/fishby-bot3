@@ -1,78 +1,132 @@
-# Импорт нужных библиотек
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, HTTPException
 from supabase import create_client, Client
+from jose import jwt
 import os
 import logging
-from jose import jwt
 
-# Создание экземпляра FastAPI
+# Инициализация FastAPI
 app = FastAPI()
-
-# Подключение к Supabase через переменные окружения
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY")
-JWT_SECRET = os.getenv("JWT_SECRET")
-
-# Логирование состояния загрузки переменных
-if JWT_SECRET:
-    logging.info(f"JWT_SECRET detected and loaded.")
-else:
-    logging.error("JWT_SECRET is missing!")
-
-# Создание клиента Supabase
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
 
-# Эндпоинт проверки работоспособности
+# Переменные окружения
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+SUPABASE_JWT_SECRET = os.getenv("SUPABASE_JWT_SECRET")
+
+# Проверка переменных
+if not SUPABASE_URL or not SUPABASE_KEY or not SUPABASE_JWT_SECRET:
+    raise Exception("Одна из переменных окружения отсутствует!")
+
+# Создание клиента Supabase
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+# Функция для логирования попытки в Supabase
+def log_attempt(data: dict):
+    response = supabase.table("attempts").insert(data).execute()
+    if response.status_code != 201:
+        logging.error(f"Ошибка при записи в Supabase: {response.data}")
+        raise HTTPException(status_code=500, detail="Ошибка записи в базу")
+    return response.data
+
+# Эндпоинт для проверки сервера
 @app.get("/next-task")
 async def next_task():
     return {"status": "ok", "message": "Server is live!"}
 
-# Функция логирования попытки в базу данных
-def log_attempt(user_id: str, question: str, selected: str, correct: bool, bot_id: str):
-    data = {
-        "user_id": user_id,
-        "question": question,
-        "selected": selected,
-        "correct": correct,
-        "bot_id": bot_id
+# Эндпоинт для получения переменных окружения (только для отладки!)
+@app.get("/env-check")
+async def env_check():
+    return {
+        "supabase_url_preview": SUPABASE_URL[:20],
+        "supabase_key_preview": SUPABASE_KEY[:10],
+        "jwt_secret_preview": SUPABASE_JWT_SECRET[:10]
     }
-    res = supabase.table("attempts").insert(data).execute()
-    return res
 
-# Эндпоинт приёма ответов и логирования попыток
+# Эндпоинт для проверки валидности токена
+@app.get("/token-check")
+async def token_check(request: Request):
+    try:
+        token = request.headers.get('Authorization')
+        if not token:
+            raise HTTPException(status_code=401, detail="Токен отсутствует")
+        token = token.replace('Bearer ', '')
+        payload = jwt.decode(token, SUPABASE_JWT_SECRET, algorithms=["HS256"])
+        return {"status": "decoded", "payload": payload}
+    except Exception as e:
+        logging.error(f"TOKEN DECODE ERROR: {str(e)}")
+        return {"status": "error", "message": str(e)}
+
+# Эндпоинт для приёма ответа студента
 @app.post("/submit")
 async def submit_answer(request: Request):
     try:
         body = await request.json()
 
-        bot_id = "default_bot"
+        # Достаём токен
         token = request.headers.get('Authorization')
-        if token:
-            try:
-                token = token.replace('Bearer ', '')
-                decoded = jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
-                bot_id = decoded.get("bot_id", "default_bot")
-            except Exception as token_error:
-                logging.error(f"!!! TOKEN DECODE ERROR: {str(token_error)}")
+        if not token:
+            raise HTTPException(status_code=401, detail="Authorization header missing")
+        token = token.replace('Bearer ', '')
 
-        result = log_attempt(
-            user_id=body.get("user_id", "anon"),
-            question=body.get("question", "unknown"),
-            selected=body.get("selected", "none"),
-            correct=body.get("correct", False),
-            bot_id=bot_id
-        )
+        # Декодируем токен
+        try:
+            decoded_token = jwt.decode(token, SUPABASE_JWT_SECRET, algorithms=["HS256"])
+            bot_id = decoded_token.get("bot_id", "default_bot")
+        except Exception as e:
+            logging.error(f"TOKEN DECODE FAILED: {str(e)}")
+            bot_id = "default_bot"
 
-        return {"status": "saved", "response": result.data}
+        # Формируем данные для записи
+        data = {
+            "user_id": body.get("user_id", "anon"),
+            "bot_id": bot_id,
+            "session_id": body.get("session_id"),
+            "branch_id": body.get("branch_id"),
+            "theme": body.get("theme"),
+            "question_id": body.get("question_id"),
+            "question_text": body.get("question_text"),
+            "arrow_pattern": body.get("arrow_pattern"),
+            "bloom_level": body.get("bloom_level"),
+            "fishbi_lvl": body.get("fishbi_lvl"),
+            "attempt_number": body.get("attempt_number"),
+            "time_spent": body.get("time_spent"),
+            "device_type": body.get("device_type"),
+            "platform": body.get("platform"),
+            "network_type": body.get("network_type"),
+            "answer_selected": body.get("answer_selected"),
+            "answer_correct": body.get("answer_correct"),
+            "answer_text_expected": body.get("answer_text_expected"),
+            "speech_to_text": body.get("speech_to_text"),
+            "audio_url": body.get("audio_url"),
+            "emotion_detected": body.get("emotion_detected"),
+            "confidence_score": body.get("confidence_score"),
+            "gpt_analysis": body.get("gpt_analysis"),
+            "commentary_read": body.get("commentary_read"),
+            "hints_used": body.get("hints_used"),
+            "attempt_success_on_retry": body.get("attempt_success_on_retry"),
+            "reflection_text": body.get("reflection_text"),
+            "metacognitive_pause": body.get("metacognitive_pause"),
+            "transfer_case_success": body.get("transfer_case_success"),
+            "strategy_selected": body.get("strategy_selected"),
+            "error_category": body.get("error_category"),
+            "mental_load_rating": body.get("mental_load_rating"),
+            "successive_correct_streak": body.get("successive_correct_streak"),
+            "attention_lapse": body.get("attention_lapse"),
+            "meta_data": body.get("meta_data"),
+        }
+
+        # Логируем попытку
+        result = log_attempt(data)
+
+        return {"status": "saved", "response": result}
 
     except Exception as e:
-        logging.error(f"Unexpected error: {str(e)}")
+        logging.error(f"Unexpected error in /submit: {str(e)}")
         return {"status": "error", "message": str(e)}
 
-# Стандартный запуск через uvicorn
+# Для локального запуска
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=8000)
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
