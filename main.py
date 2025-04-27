@@ -72,7 +72,14 @@ async def submit_answer(request: Request):
         logging.error(f"Unexpected error: {str(e)}")
         return {"status": "error", "message": str(e)}
 
-# 🔥 Новый эндпоинт для проверки токена
+# Эндпоинт для проверки JWT_SECRET сервера
+@app.get("/env-check")
+async def env_check():
+    return {
+        "jwt_secret_preview": JWT_SECRET[:10] if JWT_SECRET else "MISSING"
+    }
+
+# Эндпоинт для теста токена
 @app.get("/token-check")
 async def token_check(request: Request):
     token = request.headers.get('Authorization')
