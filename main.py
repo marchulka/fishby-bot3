@@ -13,10 +13,10 @@ logging.basicConfig(level=logging.INFO)
 # Переменные окружения
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
-SUPABASE_JWT_SECRET = os.getenv("SUPABASE_JWT_SECRET")
+JWT_SECRET = os.getenv("JWT_SECRET")  # <- ПРАВИЛЬНАЯ ПЕРЕМЕННАЯ!
 
 # Проверка переменных
-if not SUPABASE_URL or not SUPABASE_KEY or not SUPABASE_JWT_SECRET:
+if not SUPABASE_URL or not SUPABASE_KEY or not JWT_SECRET:
     raise Exception("Одна из переменных окружения отсутствует!")
 
 # Создание клиента Supabase
@@ -35,13 +35,13 @@ def log_attempt(data: dict):
 async def next_task():
     return {"status": "ok", "message": "Server is live!"}
 
-# Эндпоинт для получения переменных окружения (только для отладки!)
+# Эндпоинт для просмотра переменных окружения (для дебага!)
 @app.get("/env-check")
 async def env_check():
     return {
         "supabase_url_preview": SUPABASE_URL[:20],
         "supabase_key_preview": SUPABASE_KEY[:10],
-        "jwt_secret_preview": SUPABASE_JWT_SECRET[:10]
+        "jwt_secret_preview": JWT_SECRET[:10]
     }
 
 # Эндпоинт для проверки валидности токена
@@ -52,7 +52,7 @@ async def token_check(request: Request):
         if not token:
             raise HTTPException(status_code=401, detail="Токен отсутствует")
         token = token.replace('Bearer ', '')
-        payload = jwt.decode(token, SUPABASE_JWT_SECRET, algorithms=["HS256"])
+        payload = jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
         return {"status": "decoded", "payload": payload}
     except Exception as e:
         logging.error(f"TOKEN DECODE ERROR: {str(e)}")
@@ -72,7 +72,7 @@ async def submit_answer(request: Request):
 
         # Декодируем токен
         try:
-            decoded_token = jwt.decode(token, SUPABASE_JWT_SECRET, algorithms=["HS256"])
+            decoded_token = jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
             bot_id = decoded_token.get("bot_id", "default_bot")
         except Exception as e:
             logging.error(f"TOKEN DECODE FAILED: {str(e)}")
