@@ -1,36 +1,36 @@
-# Импортируем нужные библиотеки
+# Импорт нужных библиотек
 from fastapi import FastAPI, Request
 from supabase import create_client, Client
 import os
 import logging
 from jose import jwt
 
-# Создаём экземпляр FastAPI-приложения
+# Создание экземпляра FastAPI
 app = FastAPI()
 
-# Подключение к Supabase с использованием переменных окружения
+# Подключение к Supabase через переменные окружения
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 JWT_SECRET = os.getenv("JWT_SECRET")
 
 # Логирование состояния загрузки переменных
 if JWT_SECRET:
-    logging.info(f"JWT_SECRET detected: {JWT_SECRET[:5]}... (hidden)")
+    logging.info(f"JWT_SECRET detected and loaded.")
 else:
-    logging.error("JWT_SECRET is MISSING!")
+    logging.error("JWT_SECRET is missing!")
 
-# Создаём клиента Supabase
+# Создание клиента Supabase
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# Конфигурация логирования
+# Настройка логирования
 logging.basicConfig(level=logging.INFO)
 
-# Эндпоинт для проверки жизни сервера
+# Эндпоинт проверки работоспособности
 @app.get("/next-task")
 async def next_task():
     return {"status": "ok", "message": "Server is live!"}
 
-# Функция для логирования попытки в базу данных Supabase
+# Функция логирования попытки в базу данных
 def log_attempt(user_id: str, question: str, selected: str, correct: bool, bot_id: str):
     data = {
         "user_id": user_id,
@@ -42,7 +42,7 @@ def log_attempt(user_id: str, question: str, selected: str, correct: bool, bot_i
     res = supabase.table("attempts").insert(data).execute()
     return res
 
-# Эндпоинт для приёма ответа от пользователя и логирования попытки
+# Эндпоинт приёма ответов и логирования попыток
 @app.post("/submit")
 async def submit_answer(request: Request):
     try:
@@ -72,38 +72,7 @@ async def submit_answer(request: Request):
         logging.error(f"Unexpected error: {str(e)}")
         return {"status": "error", "message": str(e)}
 
-# Эндпоинт для показа полного JWT_SECRET
-@app.get("/env-check")
-async def env_check():
-    return {
-        "jwt_secret_full": JWT_SECRET if JWT_SECRET else "MISSING"
-    }
-
-# Эндпоинт для теста токена
-@app.get("/token-check")
-async def token_check(request: Request):
-    token = request.headers.get('Authorization')
-    if not token:
-        return {"status": "error", "message": "Authorization header missing"}
-    
-    try:
-        token = token.replace('Bearer ', '')
-        decoded = jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
-        return {"status": "decoded", "payload": decoded}
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
-
-# 🔥 Новый эндпоинт для генерации валидного токена прямо на сервере
-@app.get("/generate-token")
-async def generate_token():
-    try:
-        payload = {"bot_id": "fishby_main_bot"}
-        token = jwt.encode(payload, JWT_SECRET, algorithm="HS256")
-        return {"status": "token_generated", "token": token}
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
-
-# Стандартный запуск uvicorn
+# Стандартный запуск через uvicorn
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("main:app", host="0.0.0.0", port=8000)
