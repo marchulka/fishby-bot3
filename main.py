@@ -1,7 +1,6 @@
 # Импортируем нужные библиотеки
 from fastapi import FastAPI, Request
 from supabase import create_client, Client
-from jose import jwt
 import os
 import logging
 
@@ -11,9 +10,7 @@ app = FastAPI()
 # Подключение к Supabase с использованием переменных окружения
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
-JWT_SECRET = os.getenv("JWT_SECRET")
-
-# Создаём клиента Supabase
+JWT_SECRET = os.getenv("JWT_SECRET")  # пока не используем, но пусть будет для будущего
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # Конфигурация логирования
@@ -31,7 +28,7 @@ def log_attempt(user_id: str, question: str, selected: str, correct: bool, bot_i
         "question": question,
         "selected": selected,
         "correct": correct,
-        "bot_id": bot_id,
+        "bot_id": bot_id
     }
     res = supabase.table("attempts").insert(data).execute()
     return res
@@ -42,15 +39,8 @@ async def submit_answer(request: Request):
     try:
         body = await request.json()
 
-        # Получение заголовка Authorization
-        token = request.headers.get('Authorization')
-        if not token:
-            raise ValueError("Authorization header missing")
-        token = token.replace('Bearer ', '')
-
-        # Декодируем токен, чтобы достать bot_id
-        decoded = jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
-        bot_id = decoded.get("bot_id", "default_bot")  # если нет bot_id - ставим дефолт
+        # 🔥 Временный режим: всегда ставим bot_id = "default_bot"
+        bot_id = "default_bot"
 
         # Логируем попытку
         result = log_attempt(
@@ -67,7 +57,7 @@ async def submit_answer(request: Request):
         logging.error(f"Unexpected error: {str(e)}")
         return {"status": "error", "message": str(e)}
 
-# Стандартный запуск uvicorn
+# Стандартный запуск uvicorn для Railway и локалки
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("main:app", host="0.0.0.0", port=8000)
