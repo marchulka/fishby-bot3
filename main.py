@@ -3,7 +3,6 @@ from supabase import create_client, Client
 from jose import jwt
 import os
 import logging
-import datetime
 
 # Инициализация FastAPI
 app = FastAPI()
@@ -16,7 +15,7 @@ SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 JWT_SECRET = os.getenv("JWT_SECRET")
 
-# Проверка переменных
+# Проверка переменных окружения
 if not SUPABASE_URL or not SUPABASE_KEY or not JWT_SECRET:
     raise Exception("Одна из переменных окружения отсутствует!")
 
@@ -30,7 +29,7 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 async def next_task():
     return {"status": "ok", "message": "Server is live!"}
 
-# Эндпоинт: просмотр переменных окружения
+# Эндпоинт: проверка переменных окружения
 @app.get("/env-check")
 async def env_check():
     return {
@@ -39,7 +38,7 @@ async def env_check():
         "jwt_secret_preview": JWT_SECRET[:10]
     }
 
-# Эндпоинт: проверка валидности токена
+# Эндпоинт: проверка токена
 @app.get("/token-check")
 async def token_check(request: Request):
     try:
@@ -49,25 +48,8 @@ async def token_check(request: Request):
         token = token.replace('Bearer ', '')
         payload = jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
         return {"status": "decoded", "payload": payload}
-        except Exception as e:
-        logging.error(f"TOKEN DECODE ERROR: {str(e)}")
-        return {"status": "error", "message": str(e)}
-
-# Эндпоинт: генерация нового токена
-@app.get("/generate-token")
-async def generate_token():
-    try:
-        payload = {
-            "bot_id": "fishby_main_bot",
-            "exp": datetime.datetime.utcnow() + datetime.timedelta(days=7)
-        }
-        token = jwt.encode(payload, JWT_SECRET, algorithm="HS256")
-        return {
-            "status": "token_generated",
-            "token": token
-        }
     except Exception as e:
-        logging.error(f"GENERATE TOKEN ERROR: {str(e)}")
+        logging.error(f"TOKEN DECODE ERROR: {str(e)}")
         return {"status": "error", "message": str(e)}
 
 # Эндпоинт: приём ответа студента
@@ -90,7 +72,7 @@ async def submit_answer(request: Request):
             logging.error(f"TOKEN DECODE FAILED: {str(e)}")
             bot_id = "default_bot"
 
-        # Формируем данные для записи
+        # Формируем данные для вставки
         data = {
             "user_id": body.get("user_id", "anon"),
             "bot_id": bot_id,
@@ -129,7 +111,7 @@ async def submit_answer(request: Request):
             "meta_data": body.get("meta_data"),
         }
 
-        # Логируем попытку
+        # Логируем попытку в Supabase
         response = supabase.table("attempts").insert(data).execute()
 
         if response.status_code != 201:
