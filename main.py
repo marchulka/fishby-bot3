@@ -3,6 +3,7 @@ from supabase import create_client, Client
 from jose import jwt
 import os
 import logging
+import datetime
 
 # Инициализация FastAPI
 app = FastAPI()
@@ -13,7 +14,7 @@ logging.basicConfig(level=logging.INFO)
 # Переменные окружения
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
-JWT_SECRET = os.getenv("JWT_SECRET")  # <- ПРАВИЛЬНАЯ ПЕРЕМЕННАЯ!
+JWT_SECRET = os.getenv("JWT_SECRET")
 
 # Проверка переменных
 if not SUPABASE_URL or not SUPABASE_KEY or not JWT_SECRET:
@@ -22,20 +23,14 @@ if not SUPABASE_URL or not SUPABASE_KEY or not JWT_SECRET:
 # Создание клиента Supabase
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# Функция для логирования попытки в Supabase
-def log_attempt(data: dict):
-    response = supabase.table("attempts").insert(data).execute()
-    if response.status_code != 201:
-        logging.error(f"Ошибка при записи в Supabase: {response.data}")
-        raise HTTPException(status_code=500, detail="Ошибка записи в базу")
-    return response.data
+# -------------------- ЭНДПОИНТЫ --------------------
 
-# Эндпоинт для проверки сервера
+# Эндпоинт: проверка сервера
 @app.get("/next-task")
 async def next_task():
     return {"status": "ok", "message": "Server is live!"}
 
-# Эндпоинт для просмотра переменных окружения (для дебага!)
+# Эндпоинт: просмотр переменных окружения
 @app.get("/env-check")
 async def env_check():
     return {
@@ -44,7 +39,7 @@ async def env_check():
         "jwt_secret_preview": JWT_SECRET[:10]
     }
 
-# Эндпоинт для проверки валидности токена
+# Эндпоинт: проверка валидности токена
 @app.get("/token-check")
 async def token_check(request: Request):
     try:
@@ -54,11 +49,28 @@ async def token_check(request: Request):
         token = token.replace('Bearer ', '')
         payload = jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
         return {"status": "decoded", "payload": payload}
-    except Exception as e:
+        except Exception as e:
         logging.error(f"TOKEN DECODE ERROR: {str(e)}")
         return {"status": "error", "message": str(e)}
 
-# Эндпоинт для приёма ответа студента
+# Эндпоинт: генерация нового токена
+@app.get("/generate-token")
+async def generate_token():
+    try:
+        payload = {
+            "bot_id": "fishby_main_bot",
+            "exp": datetime.datetime.utcnow() + datetime.timedelta(days=7)
+        }
+        token = jwt.encode(payload, JWT_SECRET, algorithm="HS256")
+        return {
+            "status": "token_generated",
+            "token": token
+        }
+    except Exception as e:
+        logging.error(f"GENERATE TOKEN ERROR: {str(e)}")
+        return {"status": "error", "message": str(e)}
+
+# Эндпоинт: приём ответа студента
 @app.post("/submit")
 async def submit_answer(request: Request):
     try:
@@ -118,9 +130,13 @@ async def submit_answer(request: Request):
         }
 
         # Логируем попытку
-        result = log_attempt(data)
+        response = supabase.table("attempts").insert(data).execute()
 
-        return {"status": "saved", "response": result}
+        if response.status_code != 201:
+            logging.error(f"Ошибка при записи в Supabase: {response.data}")
+            raise HTTPException(status_code=500, detail="Ошибка записи в базу")
+        
+        return {"status": "saved", "response": response.data}
 
     except Exception as e:
         logging.error(f"Unexpected error in /submit: {str(e)}")
