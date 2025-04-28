@@ -12,6 +12,9 @@ SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 JWT_SECRET = os.getenv("JWT_SECRET")
 
+# 🧠 ДОБАВЛЕНО логирование секрета
+print(f"Текущий JWT_SECRET: {JWT_SECRET} (len={len(JWT_SECRET)})")
+
 if not all([SUPABASE_URL, SUPABASE_KEY, JWT_SECRET]):
     raise Exception("Одна из переменных окружения отсутствует!")
 
@@ -63,7 +66,6 @@ async def submit_answer(request: Request):
             "selected": body.get("selected", "none"),
             "correct": body.get("correct", False),
             "bot_id": bot_id,
-            # Плюс все расширенные поля, если есть
             "session_id": body.get("session_id"),
             "branch_id": body.get("branch_id"),
             "theme": body.get("theme"),
